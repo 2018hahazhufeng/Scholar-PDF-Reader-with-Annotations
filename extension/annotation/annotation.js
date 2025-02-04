@@ -10,122 +10,34 @@ document.addEventListener('mousemove', (e) => {
 });
 
 // Constants and utilities
-const TOOLS = {
-    highlight: {
-        id: 'highlight-btn',
-        colors: ['yellow', 'greenyellow', 'cyan', 'magenta', 'red']
+const HighlightColors = {
+    'yellow': {
+        id: 'highlight-yellow'
     },
-    draw: {
-        id: 'draw-btn',
-        colors: ['white', 'black', 'red', 'green', 'blue']
+    'cyan': {
+        id: 'highlight-cyan'
     },
-    text: {
-        id: 'text-btn',
-        colors: ['white', 'black', 'red', 'green', 'blue']
-    }
+    'magenta': {
+        id: 'highlight-magenta'
+    },
+    'red': {
+        id: 'highlight-red'
+    },
 };
 
-class ColorPickerManager {
+class ToolsManager {
     constructor() {
         this.activeTools = {
-            isHighlighting: false,
-            isDrawing: false,
-            isTexting: false,
             isErasing: false
         };
-        this.currentColors = {
-            highlight: TOOLS.highlight.colors[0],
-            draw: TOOLS.draw.colors[0],
-            text: TOOLS.text.colors[0]
-        };
     }
-
-    createColorPicker(toolType) {
-        const colors = TOOLS[toolType].colors;
-        const popup = document.createElement('div');
-        popup.id = `${toolType}-color-popup`;
-        popup.className = 'color-popup';
-        
-        colors.forEach(color => {
-            const button = document.createElement('button');
-            button.className = 'color-option';
-            button.setAttribute('data-color', color);
-            button.style.backgroundColor = color;
-            if (color === this.currentColors[toolType]) {
-                button.classList.add('active');
-            }
-            popup.appendChild(button);
-        });
-
-        return popup;
-    }
-
-    setupToolButton(toolType) {
-        const container = document.createElement('div');
-        container.className = 'tool-container';
-        
-        const button = document.getElementById(TOOLS[toolType].id);
-        const popup = this.createColorPicker(toolType);
-        
-        // Move the button into the container and add the popup
-        button.parentNode.insertBefore(container, button);
-        container.appendChild(button);
-        container.appendChild(popup);
-
-        let hideTimeout;
-
-        container.addEventListener('mouseenter', () => {
-            clearTimeout(hideTimeout);
-            popup.style.display = 'block';
-        });
-
-        container.addEventListener('mouseleave', () => {
-            hideTimeout = setTimeout(() => {
-                popup.style.display = 'none';
-            }, 100);
-        });
-
-        popup.querySelectorAll('.color-option').forEach(option => {
-            option.addEventListener('click', (e) => {
-                this.currentColors[toolType] = e.target.getAttribute('data-color');
-                this.updateActiveColor(toolType, e.target);
-            });
-        });
-
-        return container;
-    }
-
-    updateActiveColor(toolType, activeOption) {
-        const popup = document.getElementById(`${toolType}-color-popup`);
-        popup.querySelectorAll('.color-option').forEach(option => {
-            option.classList.remove('active');
-        });
-        activeOption.classList.add('active');
-        
-        const button = document.getElementById(TOOLS[toolType].id);
-        button.style.textShadow = `0 0 10px ${this.currentColors[toolType]}`;
-    }
-
     updateButtonStates() {
-        Object.keys(TOOLS).forEach(tool => {
-            const button = document.getElementById(TOOLS[tool].id);
-            const isActive = this.activeTools[`is${tool.charAt(0).toUpperCase() + tool.slice(1)}ing`];
-            button.classList.toggle('active', isActive);
-        });
-        
         const eraseBtn = document.getElementById('erase-btn');
         eraseBtn.classList.toggle('active', this.activeTools.isErasing);
     }
-
     updateCursor(event) {
-        if (this.activeTools.isHighlighting) {
+        if (this.activeTools.isErasing) {
             document.body.style.cursor = 'crosshair';
-        } else if (this.activeTools.isDrawing) {
-            document.body.style.cursor = 'crosshair';
-        } else if (this.activeTools.isTexting) {
-            document.body.style.cursor = 'text';
-        } else if (this.activeTools.isErasing) {
-            document.body.style.cursor = 'pointer';
         } else {
             const target = event.target;
             const isTextElement = target.nodeType === Node.TEXT_NODE ||
@@ -138,8 +50,7 @@ class ColorPickerManager {
 
 function initializeAnnotation() {
     console.log('Initializing annotation...');
-    const colorPickerManager = new ColorPickerManager();
-
+    const toolsManager = new ToolsManager()
     // Set up message listener for PDF URL
     window.addEventListener("message", (event) => {
         if (event.data.type === "FROM_CONTENT_SCRIPT") {
@@ -153,50 +64,48 @@ function initializeAnnotation() {
         }
     }, false);
 
-    // Initialize color pickers for each tool
-    Object.keys(TOOLS).forEach(tool => {
-        colorPickerManager.setupToolButton(tool);
-    });
 
     // Set up button click handlers
-    setupButtonHandlers(colorPickerManager);
+    setupButtonHandlers(toolsManager);
 
     // Set up document event listeners with the manager instance
-    document.addEventListener('mouseup', () => handleSelection(colorPickerManager));
-    document.addEventListener('click', (e) => handleErase(e, colorPickerManager));
+    // document.addEventListener('mouseup', () => handleSelection(colorPickerManager));
+    document.addEventListener('click', (e) => handleErase(e, toolsManager));
 
     observePageChanges();
 }
 
-function setupButtonHandlers(colorPickerManager) {
-    const alertNotImplemented = () => alert('This feature is not implemented yet!');
-
-    // Tool buttons
-    document.getElementById(TOOLS.highlight.id).addEventListener('click', () => {
-        colorPickerManager.activeTools.isHighlighting = !colorPickerManager.activeTools.isHighlighting;
-        colorPickerManager.activeTools.isErasing = false;
-        colorPickerManager.updateButtonStates();
-        colorPickerManager.updateCursor({ target: document.elementFromPoint(mouseX, mouseY) });
+function setupButtonHandlers(toolsManager) {
+    // color buttons
+    Object.entries(HighlightColors).forEach(([key, value]) => {
+        document.getElementById(value.id).addEventListener('click', () => {
+            const selection = window.getSelection();
+            if (selection.isCollapsed) return;
+            const range = selection.getRangeAt(0);
+            const groupId = 'group-' + Date.now();
+            highlightRange(range, groupId, key);
+            selection.removeAllRanges();
+        });
     });
-    document.getElementById(TOOLS.draw.id).addEventListener('click', alertNotImplemented);
-    document.getElementById(TOOLS.text.id).addEventListener('click', alertNotImplemented);
+    // Tool buttons
+    // document.getElementById(TOOLS.highlight.id).addEventListener('click', () => {
+    //     colorPickerManager.activeTools.isHighlighting = !colorPickerManager.activeTools.isHighlighting;
+    //     colorPickerManager.activeTools.isErasing = false;
+    //     colorPickerManager.updateButtonStates();
+    //     colorPickerManager.updateCursor({ target: document.elementFromPoint(mouseX, mouseY) });
+    // });
 
     // Other buttons
     document.getElementById('erase-btn').addEventListener('click', () => {
-        colorPickerManager.activeTools.isErasing = !colorPickerManager.activeTools.isErasing;
-        colorPickerManager.activeTools.isHighlighting = false;
-        colorPickerManager.updateButtonStates();
-        colorPickerManager.updateCursor({ target: document.elementFromPoint(mouseX, mouseY) });
+        toolsManager.activeTools.isErasing = !toolsManager.activeTools.isErasing;
+        toolsManager.updateButtonStates();
+        toolsManager.updateCursor({ target: document.elementFromPoint(mouseX, mouseY) });
     });
 
     document.getElementById('erase-all-btn').addEventListener('click', eraseAllAnnotations);
     
     document.getElementById('settings-btn').addEventListener('click', () => {
         chrome.runtime.openOptionsPage();
-    });
-
-    document.getElementById('star-btn').addEventListener('click', () => {
-        chrome.tabs.create({ url: 'https://github.com/salcc/Scholar-PDF-Reader-with-Annotations' });
     });
 }
 
@@ -227,21 +136,21 @@ function observePageChanges() {
     observer.observe(document.body, config);
 }
 
-function handleSelection(colorPickerManager) {
-    if (!colorPickerManager.activeTools.isHighlighting || colorPickerManager.activeTools.isErasing) return;
+// function handleSelection(colorPickerManager) {
+//     if (!colorPickerManager.activeTools.isHighlighting || colorPickerManager.activeTools.isErasing) return;
 
-    const selection = window.getSelection();
-    if (selection.isCollapsed) return;
+//     const selection = window.getSelection();
+//     if (selection.isCollapsed) return;
 
-    const range = selection.getRangeAt(0);
-    const groupId = 'group-' + Date.now();
-    // Pass the current color from the manager
-    highlightRange(range, groupId, colorPickerManager.currentColors.highlight);
-    selection.removeAllRanges();
-}
+//     const range = selection.getRangeAt(0);
+//     const groupId = 'group-' + Date.now();
+//     // Pass the current color from the manager
+//     highlightRange(range, groupId, colorPickerManager.currentColors.highlight);
+//     selection.removeAllRanges();
+// }
 
-function handleErase(event, colorPickerManager) {
-    if (!colorPickerManager.activeTools.isErasing) return;
+function handleErase(event, toolsManager) {
+    if (!toolsManager.activeTools.isErasing) return;
 
     const highlightSpan = findHighlightSpanAtPoint(event.clientX, event.clientY);
     if (highlightSpan) {
